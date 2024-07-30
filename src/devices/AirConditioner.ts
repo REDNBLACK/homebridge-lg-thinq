@@ -165,6 +165,15 @@ export default class AirConditioner extends baseDevice {
 
     this.setupButton(device);
 
+    // Load Filter Life Level on Start and Update Every Minute
+    // https://github.com/sman591/homebridge-lg-thinq-ac/issues/94
+    this.updateFilterLife()
+    setInterval(() => {
+      if (device.online) {
+        this.updateFilterLife()
+      }
+    }, 60 * 1000)
+
     // Send request every minute to update temperature
     // https://github.com/nVuln/homebridge-lg-thinq/issues/177
     setInterval(() => {
@@ -177,14 +186,6 @@ export default class AirConditioner extends baseDevice {
         });
       }
     }, 60 * 1000)
-
-    // Load Filter Life Level on Start and Update Every Hour
-    this.updateFilterLife()
-    setInterval(() => {
-      if (device.online) {
-        this.updateFilterLife()
-      }
-    }, 60 * 60 * 1000)
   }
 
   public get config() {
@@ -205,6 +206,27 @@ export default class AirConditioner extends baseDevice {
 
   public get Status() {
     return new ACStatus(this.accessory.context.device.snapshot, this.accessory.context.device, this.config);
+  }
+
+  async identify() {
+    const device: Device = this.accessory.context.device;
+
+    let times = 6
+    let chain = Promise.resolve(false)
+
+    while (times-- > 0) {
+      chain = chain.then(async (state) => {
+        await this.platform.ThinQ?.deviceControl(device.id, {
+          dataKey:  'airState.lightingState.displayControl',
+          dataValue: state ? 1 : 0
+        })
+        await new Promise(cb => setTimeout(cb, 200))
+
+        return !state
+      })
+    }
+
+    return chain
   }
 
   async updateFilterLife() {
