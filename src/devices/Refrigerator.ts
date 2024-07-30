@@ -241,7 +241,7 @@ export default class Refrigerator extends baseDevice {
   /**
    * create a thermostat service
    */
-  protected createThermostat(name: string, key: string) {
+  protected createThermostat(name: string, key: string): any {
     const device: Device = this.accessory.context.device;
     if (!this.Status.hasFeature(key)) {
       return;
