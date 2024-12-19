@@ -177,7 +177,7 @@ export class ThinQ {
       .then(response => {
         if (response.resultCode === '0000') {
           this.log.debug('ThinQ Device Received the Command');
-          return true;
+          return command === 'Get' ? response.result : true;
         } else {
           this.log.debug('ThinQ Device Did Not Received the Command');
           return false;

@@ -38,7 +38,7 @@ export default class Dishwasher extends baseDevice {
   protected dishwasherRinseLevel;
   protected dishwasherClaenness;
 
-  createInputSourceService(name, subtype, identifier, configuredName, isShow) {
+  createInputSourceService(name, subtype, identifier, configuredName, isShow): any {
     return this.accessory.getService(name) ||
       this.accessory.addService(this.platform.Service.InputSource, name, subtype)
         .setCharacteristic(this.platform.Characteristic.Identifier, identifier)
