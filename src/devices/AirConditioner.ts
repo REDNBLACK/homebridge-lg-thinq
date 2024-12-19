@@ -68,6 +68,13 @@ export default class AirConditioner extends baseDevice {
     this.createHeaterCoolerService();
     this.service.addOptionalCharacteristic(this.platform.customCharacteristics.TotalConsumption);
 
+    this.service
+      .getCharacteristic(platform.Characteristic.FilterLifeLevel)
+      .onGet(() => this.Status.currentFilterLife)
+    this.service
+      .getCharacteristic(platform.Characteristic.FilterChangeIndication)
+      .onGet(() => this.Status.filterNeedChange ? platform.Characteristic.FilterChangeIndication.CHANGE_FILTER : platform.Characteristic.FilterChangeIndication.FILTER_OK)
+
     if (this.config?.ac_air_quality as boolean && this.Status.airQuality) {
       this.createAirQualityService();
     } else if (this.serviceAirQuality) {
@@ -198,6 +205,25 @@ export default class AirConditioner extends baseDevice {
       ac_air_clean: true,
       ac_energy_save: true,
     }, super.config);
+  }
+
+  async updateFilterLife() {
+    const device: Device = this.accessory.context.device;
+    if (!this.Status.isPowerOn) {
+      return;
+    }
+    this.platform.ThinQ
+      ?.deviceControl(device.id, {
+        dataGetList: [
+          'airState.filterMngStates.useTime',
+          'airState.filterMngStates.maxTime'
+        ]
+      }, 'Get', 'filterMngStateCtrl')
+      .then(({ data }) => {
+        device.data.snapshot['airState.filterMngStates.useTime'] = data['airState.filterMngStates.useTime']
+        device.data.snapshot['airState.filterMngStates.maxTime'] = data['airState.filterMngStates.maxTime']
+        this.updateAccessoryCharacteristic(device)
+      })
   }
 
   async identify() {
@@ -347,6 +373,10 @@ export default class AirConditioner extends baseDevice {
     this.service.updateCharacteristic(Characteristic.SwingMode, this.Status.isSwingOn ? Characteristic.SwingMode.SWING_ENABLED : Characteristic.SwingMode.SWING_DISABLED);
 
     this.service.updateCharacteristic(this.platform.customCharacteristics.TotalConsumption, this.Status.currentConsumption);
+
+    // filters
+    this.service.updateCharacteristic(Characteristic.FilterLifeLevel, this.Status.currentFilterLife);
+    this.service.updateCharacteristic(Characteristic.FilterChangeIndication, this.Status.filterNeedChange ? Characteristic.FilterChangeIndication.CHANGE_FILTER : Characteristic.FilterChangeIndication.FILTER_OK);
 
     // air quality
     if (this.config?.ac_air_quality as boolean && this.serviceAirQuality && this.Status.airQuality && this.Status.airQuality.isOn) {
@@ -956,6 +986,29 @@ export class ACStatus {
     }
 
     return consumption / 100;
+  }
+
+  public get currentFilterUsage() {
+    const max = this.data['airState.filterMngStates.maxTime']
+    const use = this.data['airState.filterMngStates.useTime']
+    // console.log('CurrentFilterUsage::Get', { max, use })
+    return { max, use }
+  }
+
+  public get currentFilterLife() {
+    const { max, use } = this.currentFilterUsage
+    const usePercent = (use / (max || 1)) * 100
+    const filterLife = Math.floor(100 - usePercent)
+    // console.log('CurrentFilterLife::Get', { usePercent, filterLife })
+    return filterLife
+  }
+
+  public get filterNeedChange() {
+    const { use, max }          = this.currentFilterUsage
+    const filterChangeThreshold = 5 // In Hours
+    const needChange            = max <= 0 ? false : (max - use) <= filterChangeThreshold
+    // console.log(`FilterNeedChange::Get (${max} - ${use}) <= ${filterChangeThreshold}`, needChange)
+    return needChange
   }
 
   public get type() {
