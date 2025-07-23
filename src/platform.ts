@@ -162,6 +162,12 @@ export class LGThinQHomebridgePlatform implements DynamicPlatformPlugin {
         this.accessories.push(accessory);
       }
 
+      lgThinQDevice.accessory.on('identify', async () => {
+        this.log.info('Trying to identify %s', lgThinQDevice.accessory.displayName)
+
+        return lgThinQDevice.identify()
+      })
+
       this.events.on(device.id, lgThinQDevice.update.bind(lgThinQDevice));
 
       // first time update

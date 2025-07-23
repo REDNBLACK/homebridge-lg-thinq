@@ -180,7 +180,7 @@ export class API {
     return this._homes;
   }
 
-  public async sendCommandToDevice(device_id: string, values: Record<string, any>, command: 'Set' | 'Operation', ctrlKey = 'basicCtrl', ctrlPath = 'control-sync') {
+  public async sendCommandToDevice(device_id: string, values: Record<string, any>, command: 'Get' | 'Set' | 'Operation', ctrlKey = 'basicCtrl', ctrlPath = 'control-sync') {
     return await this.postRequest('service/devices/' + device_id + '/' + ctrlPath, {
       ctrlKey,
       'command': command,

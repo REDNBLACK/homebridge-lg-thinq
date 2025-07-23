@@ -195,6 +195,27 @@ export default class AirConditioner extends baseDevice {
     return new ACStatus(this.accessory.context.device.snapshot, this.accessory.context.device, this.config);
   }
 
+  async identify() {
+    const device: Device = this.accessory.context.device;
+
+    let times = 6
+    let chain = Promise.resolve(false)
+
+    while (times-- > 0) {
+      chain = chain.then(async (state) => {
+        await this.platform.ThinQ?.deviceControl(device.id, {
+          dataKey:  'airState.lightingState.displayControl',
+          dataValue: state ? 1 : 0
+        })
+        await new Promise(cb => setTimeout(cb, 200))
+
+        return !state
+      })
+    }
+
+    return chain
+  }
+
   async setEnergySaveActive(value: CharacteristicValue) {
     const device: Device = this.accessory.context.device;
 
