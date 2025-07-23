@@ -27,6 +27,11 @@ enum OpMode {
   AIR_CLEAN = 5,
 }
 
+function SetIntervalAndExecute(fn, t) {
+  fn()
+  return(setInterval(fn, t))
+}
+
 export default class AirConditioner extends baseDevice {
   protected service;
   protected serviceAirQuality;
@@ -67,6 +72,12 @@ export default class AirConditioner extends baseDevice {
 
     this.createHeaterCoolerService();
     this.service.addOptionalCharacteristic(this.platform.customCharacteristics.TotalConsumption);
+
+    this.service.addOptionalCharacteristic(platform.Characteristic.FilterLifeLevel)
+    this.service.updateCharacteristic(platform.Characteristic.FilterLifeLevel, 100)
+
+    this.service.addOptionalCharacteristic(platform.Characteristic.FilterChangeIndication)
+    this.service.updateCharacteristic(platform.Characteristic.FilterChangeIndication, platform.Characteristic.FilterChangeIndication.FILTER_OK)
 
     if (this.config?.ac_air_quality as boolean && this.Status.airQuality) {
       this.createAirQualityService();
@@ -160,18 +171,39 @@ export default class AirConditioner extends baseDevice {
 
     this.setupButton(device);
 
-    // send request every minute to update temperature
+    // Load Filter Life Level on Start and Update Every Minute
+    // https://github.com/sman591/homebridge-lg-thinq-ac/issues/94
+    SetIntervalAndExecute(() => {
+      if (device.online && this.Status.isPowerOn) {
+        this.platform.ThinQ
+          ?.deviceControl(device.id, {
+            dataGetList: [
+              'airState.filterMngStates.useTime',
+              'airState.filterMngStates.maxTime'
+            ]
+          }, 'Get', 'filterMngStateCtrl')
+          .then(({ data }) => {
+            console.log('Got Filter Life', data)
+            device.data.snapshot['airState.filterMngStates.useTime'] = data['airState.filterMngStates.useTime']
+            device.data.snapshot['airState.filterMngStates.maxTime'] = data['airState.filterMngStates.maxTime']
+            this.updateAccessoryCharacteristic(device)
+          })
+      }
+    }, 60 * 1000)
+
+    // Send request Every minute to update Temperature
     // https://github.com/nVuln/homebridge-lg-thinq/issues/177
-    setInterval(() => {
+    SetIntervalAndExecute(() => {
       if (device.online) {
         this.platform.ThinQ?.deviceControl(device.id, {
           dataKey: 'airState.mon.timeout',
           dataValue: '70',
-        }, 'Set', 'allEventEnable', 'control').then(() => {
+        }, 'Set', 'allEventEnable', 'control')
+        .then(() => {
           // success
         });
       }
-    }, 60000);
+    }, 60 * 1000)
   }
 
   public get config() {
@@ -302,6 +334,13 @@ export default class AirConditioner extends baseDevice {
     } = this.platform;
 
     this.service.updateCharacteristic(Characteristic.Active, this.Status.isPowerOn ? Active.ACTIVE : Active.INACTIVE);
+
+    // filter life level and change indication
+    if (this.Status.filterUsage.max !== 0) {
+      this.service.updateCharacteristic(Characteristic.FilterLifeLevel, this.Status.currentFilterLife)
+      this.service.updateCharacteristic(Characteristic.FilterChangeIndication, this.Status.filterNeedChange ? Characteristic.FilterChangeIndication.CHANGE_FILTER : Characteristic.FilterChangeIndication.FILTER_OK)
+    }
+
     if (this.Status.currentTemperature) {
       this.service.updateCharacteristic(Characteristic.CurrentTemperature, this.Status.currentTemperature);
     }
@@ -956,6 +995,35 @@ export class ACStatus {
     }
 
     return consumption / 100;
+  }
+
+  public get filterUsage() {
+    const max = this.data['airState.filterMngStates.maxTime']
+    const use = this.data['airState.filterMngStates.useTime']
+
+    console.log('FilterUsage::Get', { use, max })
+
+    return { max, use }
+  }
+
+  public get currentFilterLife() {
+    const { max, use } = this.filterUsage
+    const usePercent = (use / (max || 1)) * 100
+    const filterLife = Math.floor(100 - usePercent)
+
+    console.log('CurrentFilterLife::Get', { usePercent, filterLife })
+
+    return filterLife
+  }
+
+  public get filterNeedChange() {
+    const { max, use }          = this.filterUsage
+    const filterChangeThreshold = 5 // In Hours
+    const needChange            = max <= 0 ? false : (max - use) <= filterChangeThreshold
+
+    console.log(`FilterNeedChange::Get (${max} - ${use}) <= ${filterChangeThreshold}`, needChange)
+
+    return needChange
   }
 
   public get type() {
